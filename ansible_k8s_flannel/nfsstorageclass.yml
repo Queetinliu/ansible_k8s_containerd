@@ -1,0 +1,57 @@
+- name: install nfs-utils on all workers
+  yum:
+    name: nfs-utils
+    state: present
+  async: 120
+  poll: 0
+  register: nfsinstall
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['workers'] }}"  
+
+- include_tasks: setuphttpserver.yml
+
+- name: copy helm  to first master host
+  get_url: 
+   # src: ../files/helm
+    url: "{{ httpurl }}/helm"
+    dest: /usr/local/bin/helm
+    mode: '0755'
+
+- name: copy nfs tar to first master host
+  get_url:
+    url: "{{ httpurl }}/nfs-subdir-external-provisioner.tar"
+    dest: /opt/nfs-subdir-external-provisioner.tar
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['workers'] }}"  
+
+- name: load nfs oci image
+  shell: ctr -n=k8s.io images import /opt/nfs-subdir-external-provisioner.tar
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['workers'] }}"  
+  
+- name: copy nfs helm package
+  get_url:
+    url: "{{ httpurl }}/nfs-subdir-external-provisioner-4.0.12.tgz"
+  #copy: 
+    #src: files/nfs-subdir-external-provisioner-4.0.12.tgz
+    dest: /opt/nfs-subdir-external-provisioner-4.0.12.tgz
+   
+- name: check if nfs-client sc exists
+  shell: kubectl get pods|grep nfssc-nfs-subdir-external-provisioner 
+  ignore_errors: true
+  register: storageclass
+
+##在下面直接用nfsinstall.ansible_job_id得不到预期结果，调试发现需要这样处理，且对应的在不同主机上处理
+- name: get task status of nfsinstall
+  async_status:
+    jid: "{{ nfsinstall.results[item].ansible_job_id }}"
+  register: result
+  until: result.finished
+  delay: 2
+  retries: 50
+  with_items: "{{ range(groups['workers']|length)|list }}"
+  delegate_to: "{{ groups['workers'][item] }}"
+
+- name: deploy nfs storageclass
+  shell: helm install nfssc /opt/nfs-subdir-external-provisioner-4.0.12.tgz --set nfs.server={{ nfssc.nfsserver }} --set nfs.path={{ nfssc.nfspath }}
+  when: " '1/1' not in storageclass.stdout "

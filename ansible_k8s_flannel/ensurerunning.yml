@@ -1,0 +1,26 @@
+- name: check if service {{ servicename }} running
+  command: systemctl status {{ servicename }}
+  ignore_errors: yes
+  changed_when: false
+  register: status
+
+- name: start service {{ servicename }} if not running
+  systemd:
+    name: "{{ servicename }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  register: startservice
+  ignore_errors: true
+  when: "'running' not in status.stdout "
+
+- name: wait for {{ servicename }} start
+  command: systemctl status {{ servicename }} 
+  register: servicestatus
+  retries: 30
+  delay: 2
+  until: "'running'  in servicestatus.stdout"
+
+- name: service {{ servicename }} failed,stop deploy
+  assert: { that: "'running'  in servicestatus.stdout" } 
+  

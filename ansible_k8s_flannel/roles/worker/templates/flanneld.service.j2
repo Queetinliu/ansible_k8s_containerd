@@ -1,0 +1,25 @@
+[Unit]
+Description=Flanneld overlay address etcd agent
+After=network.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+KillMode=process
+Environment=NODE_NAME={{ flannel.hostname }}
+ExecStart={{ k8s_dir }}/flanneld/bin/flanneld \
+  --kube-subnet-mgr=true \
+  --ip-masq=true \
+  --kubeconfig-file={{ k8s_dir }}/flanneld/cfg/flanneld.kubeconfig \
+  -iface={{ flannel.iface}} \
+  --public-ip {{ nodeip|default(ansible_host)  }} \
+  --healthz-ip {{ nodeip|default(ansible_host) }} \
+  --healthz-port {{ flannel.healthzPort }} \
+  --v=2
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,40 @@
+[Unit]
+Description=Etcd Server
+After=network.target
+After=network-online.target
+Wants=network-online.target
+Documentation=https://github.com/coreos
+
+[Service]
+Type=notify
+WorkingDirectory={{ etcd.etcd_workingdir }}/data/
+ExecStart={{ etcd.etcd_workingdir }}/bin/etcd \
+  --data-dir={{ etcd.etcd_workingdir }}/data/ \
+  --wal-dir={{ etcd.etcd_workingdir }}/wal \
+  --name={{ etcd_member_name }} \
+  --cert-file={{ etcd.etcd_workingdir }}/cert/etcd.pem \
+  --key-file={{ etcd.etcd_workingdir }}/cert/etcd-key.pem \
+  --trusted-ca-file={{ etcd.etcd_workingdir }}/cert/ca.pem \
+  --peer-cert-file={{ etcd.etcd_workingdir }}/cert/etcd.pem \
+  --peer-key-file={{ etcd.etcd_workingdir }}/cert/etcd-key.pem \
+  --peer-trusted-ca-file={{ etcd.etcd_workingdir }}/cert/ca.pem \
+  --peer-client-cert-auth \
+  --client-cert-auth \
+  --listen-peer-urls=https://{{ nodeip|default(ansible_host) }}:2380 \
+  --initial-advertise-peer-urls=https://{{ nodeip|default(ansible_host) }}:2380 \
+  --listen-client-urls=https://{{ nodeip|default(ansible_host) }}:2379,http://127.0.0.1:2379 \
+  --advertise-client-urls=https://{{ nodeip|default(ansible_host) }}:2379 \
+  --initial-cluster-token=etcd-cluster-0 \
+  --initial-cluster={{ etcd.etcd_nodes }} \
+  --initial-cluster-state=new \
+  --auto-compaction-retention=1 \
+  --max-request-bytes=33554432 \
+  --quota-backend-bytes=6442450944 \
+  --heartbeat-interval=250 \
+  --election-timeout=2000
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

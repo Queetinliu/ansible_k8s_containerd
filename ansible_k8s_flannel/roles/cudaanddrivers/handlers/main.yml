@@ -1,0 +1,9 @@
+- name: reload library
+  shell: ldconfig
+
+- name: regenerate kernel
+  shell: dracut --force
+
+- name: enable persist
+  shell: nvidia-smi -pm 1
+

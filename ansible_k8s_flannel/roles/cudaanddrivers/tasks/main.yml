@@ -1,0 +1,51 @@
+- name: install kernel-devel and kernel-headers
+  yum:
+    name: ['kernel-lt-devel',' kernel-lt-headers','make','automake','gcc','gcc-c++']
+    state: present
+
+- name: disable nouveau
+  copy:
+    src: files/blacklist-nouveau.conf
+    dest: /etc/modprobe.d/blacklist-nouveau.conf
+  notify:
+    - regenerate kernel
+
+- name: copy cuda run file to host
+  copy: 
+    src: files/{{ item }}
+    dest: /opt/{{ item }}
+  with_items:
+    - "{{ cudarunfile }}"
+    - "{{ driverrunfile }}"    
+
+- name: install cuda run file
+  shell: rmmod nouveau && sh {{ runfile }} --silent --toolkit
+  args:
+    chdir: /opt
+    creates: /usr/local/cuda/bin/nvcc
+
+- name: copy cuda bin environment
+  copy:
+    src: files/cuda.sh
+    dest: /etc/profile.d/cuda.sh
+
+- name: copy cuda library environment
+  copy:
+    src: files/cuda-10.0.conf
+    dest: /etc/ld.so.conf.d/cuda-10.0.conf
+  notify:
+    - reload library
+  
+- name: install dkms
+  yum:
+    name: dkms
+    state: present
+
+- name: install runfile
+  shell: sh {{ runfile }} -s --dkms
+  args:
+    chdir: /opt
+    creates: /usr/bin/nvidia-smi
+  notify:
+    - enable persist
+

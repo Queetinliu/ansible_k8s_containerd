@@ -1,0 +1,15 @@
+[Unit]
+Description=SeaweedFS master
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/weed master -ip={{ masterip }} -mdir={{ weedmasterdir }} -port={{ weedmasterport }} -peers={{ weedmasterslist }} -defaultReplication={{ weedreplication }}
+WorkingDirectory=/opt/weed
+SyslogIdentifier=seaweedfs-master
+
+[Install]
+WantedBy=multi-user.target

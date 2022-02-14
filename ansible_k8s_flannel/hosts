@@ -1,0 +1,56 @@
+# This is the default ansible 'hosts' file.
+#
+# It should live in /etc/ansible/hosts
+#
+#   - Comments begin with the '#' character
+#   - Blank lines are ignored
+#   - Groups of hosts are delimited by [header] elements
+#   - You can enter hostnames or ip addresses
+#   - A hostname/ip can be a member of multiple groups
+
+# Ex 1: Ungrouped hosts, specify before any group headers.
+
+## green.example.com
+## blue.example.com
+## 192.168.100.1
+## 192.168.100.10
+#如果不是使用默认的ip绑定服务，请通过nodeip指定服务绑定的ip,请etcd集群使用的名字
+[all]
+master01 ansible_host=192.168.56.4 hostname=master01 etcd_member_name=etcd01 #nodeip=1.1.1.1
+master02 ansible_host=192.168.56.5 hostname=master02 etcd_member_name=etcd02 #nodeip=1.1.1.1
+master03 ansible_host=192.168.56.6 hostname=master03 etcd_member_name=etcd03 #nodeip=1.1.1.1
+
+# Ex 2: A collection of hosts belonging to the 'webservers' group
+[masters]
+master01
+master02
+master03
+
+[etcd]
+master01
+master02
+master03
+
+[workers]
+master01
+master02
+master03
+
+#[gpuservers]
+#master01
+#master02
+#master03
+
+#[weedmasters]
+#master01
+#
+#[weedvolumes]
+#worker01
+#
+#[weedfilers]
+#master01
+#
+#[weedservers:children]
+#weedmasters
+#weedvolumes
+#weedfilers

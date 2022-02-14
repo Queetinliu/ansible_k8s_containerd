@@ -1,0 +1,25 @@
+- name: check if http server exists
+  shell: ps -ef|grep SimpleHTTPServer|grep -v grep
+  ignore_errors: true
+  changed_when: false
+  register: httpserver
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: setup a http server
+  command: python -m SimpleHTTPServer
+  async: 300
+  poll: 0
+  args:
+    chdir: "{{ playbook_dir }}/files"
+  when: httpserver.rc|default(1) != 0
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: wait for port open
+  wait_for:
+    port: 8000
+    host: 0.0.0.0
+    state: started
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"

@@ -1,0 +1,28 @@
+- name: make {{ rolename }} data directory
+  file:
+    path: "{{ k8s_dir }}/data/{{ rolename }}"
+    state: directory
+
+- name: copy {{ rolename }} bin file
+  get_url:
+  #copy:
+    #src: ../files/{{ rolename }}
+    url: "{{ httpurl }}/{{ ansible_role_name }}/{{ rolename }}"
+    dest: "{{ k8s_dir }}/bin/{{ rolename }}"
+    mode: '0755'
+
+- name: copy {{ rolename }} cert file
+  copy:
+    src: "roles/cert/output/{{ item }}"
+    dest: "{{ k8s_dir }}/cert/{{ item }}"
+  with_items:
+    - "{{ rolename }}.pem"
+    - "{{ rolename }}-key.pem"
+
+- name: generate {{ servicename }} service file
+  template:
+    src: "templates/{{ servicename }}.service.j2"
+    dest: "/etc/systemd/system/{{ servicename }}.service"
+    force: yes
+
+- include_tasks: ensurerunning.yml

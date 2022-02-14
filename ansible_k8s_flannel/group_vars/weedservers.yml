@@ -1,0 +1,14 @@
+weedmasterslist: '{% for item in groups["weedmasters"] %}
+{%- if not loop.last -%}
+{{ hostvars[item].masterip }}:{{ hostvars[item].weedmasterport }},
+{%- else -%}
+{{ hostvars[item].masterip }}:{{ hostvars[item].weedmasterport }}
+{%- endif -%}
+{% endfor %}'
+weedfilerslist: '{% for item in groups["weedfilers"] %}
+{%- if not loop.last -%}
+{{ hostvars[item].filerip }}:{{ hostvars[item].filerport }},
+{%- else -%}
+{{ hostvars[item].filerip }}:{{ hostvars[item].filerport }}
+{%- endif -%}
+{% endfor %}'

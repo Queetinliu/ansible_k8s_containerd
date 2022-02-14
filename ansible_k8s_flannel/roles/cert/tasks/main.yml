@@ -1,0 +1,48 @@
+- include_tasks: setuphttpserver.yml
+
+- name: copy cfssl 
+  get_url:
+    url: "{{ httpurl }}/{{ ansible_role_name}}/{{ item }}"
+    dest: /usr/local/bin/{{ item }}
+    mode: '0755'
+  with_items:
+    - cfssl
+    - cfssl-certinfo
+    - cfssljson
+
+- name: mkdir output
+  file:
+    path: roles/cert/output
+    state: directory
+
+- name: copy ca config to output
+  get_url:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/{{ item }}"
+  #copy:
+   # src: "{{ item }}"
+    dest: roles/cert/output/{{ item }}
+  with_items:
+    - ca-config.json
+    - ca-csr.json  
+
+- name: generate ca 
+  shell: cfssl gencert -initca ca-csr.json | cfssljson -bare ca 
+  args:
+    chdir: roles/cert/output/
+    creates: ca.pem    
+
+- include_tasks: certcommon.yml
+  vars:
+    cn: "{{ item.cn }}"
+    hosts_list: "{{ item.hosts_list }}"
+    orga: "{{ item.orga }}"
+    rolename: "{{ item.rolename }}"
+  with_items:
+    - "{{ kubectl }}" 
+    - "{{ etcd }}"
+    - "{{ kube_apiserver }}"
+    - "{{ metrics_server }}"
+    - "{{ kube_controller_manager }}"
+    - "{{ kube_scheduler }}"
+    - "{{ kube_proxy }}"
+

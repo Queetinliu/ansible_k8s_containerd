@@ -1,0 +1,85 @@
+- hosts: all
+  gather_facts: false
+  tasks:
+  - name: test if connect to internet
+    shell: ping -c 4 -q baidu.com >& /dev/null
+    ignore_errors: true
+    register: internet
+    tags:
+      - httprepo
+      - common
+ 
+  - name: set internetstatus fact
+    set_fact:
+      internetrc: "{{ internet.rc }}"
+    tags:
+      - httprepo
+      - common
+
+- hosts: all
+  gather_facts: false
+  roles:
+    - httprepo
+  tags: 
+    - never
+    - httprepo
+    - common
+
+- hosts: all
+  gather_facts: false
+  roles:
+    - common
+  tags: 
+    - never
+    - common
+
+
+- hosts: localhost
+  gather_facts: false
+  connection: local
+  roles:
+    - cert
+  tags: 
+    - cert
+
+- hosts: etcd
+  gather_facts: false
+  roles:
+    - etcd
+
+- hosts: masters
+  gather_facts: false
+  roles:
+    - master
+  tags:
+    - master
+
+- hosts: workers
+  gather_facts: false
+  roles:
+    - worker  
+  tags:
+    - worker
+
+- hosts: "{{ groups['masters'][0] }}"
+  gather_facts: false
+  tasks:
+  - include_tasks: nfsstorageclass.yml
+  tags:
+    - nfsstorageclass
+   
+- hosts: workers
+  gather_facts: false
+  roles:
+    - addons
+  tags:
+    - addons 
+
+#clean主要用于develop环境
+- hosts: "{{ groups['masters'][0] }}"
+  gather_facts: false
+  tasks:
+  - include_tasks: clean.yml
+  tags:
+    - clean
+    #- never

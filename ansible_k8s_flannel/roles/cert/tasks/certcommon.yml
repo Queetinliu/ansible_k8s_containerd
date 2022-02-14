@@ -1,0 +1,10 @@
+- name: generate {{ rolename }} csr
+  template: 
+    src: templates/csr.json.j2
+    dest: "roles/cert/output/{{ rolename }}-csr.json"
+
+- name: generate  {{ rolename }} cert
+  shell: cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes {{ rolename }}-csr.json | cfssljson -bare {{ rolename }}
+  args: 
+    chdir: roles/cert/output/
+    creates: "{{ rolename }}.pem"

@@ -1,0 +1,36 @@
+- block:
+  - name: Ansible delete file glob
+    find:
+      paths: /etc/yum.repos.d/
+      patterns: '*.repo'
+    register: files_to_delete
+    when: internetrc != 0
+
+  - name: Ansible remove file glob
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    with_items: "{{ files_to_delete.files }}"
+    when: internet.rc|default(1) != 0 
+
+- name: copy httprepo file
+  template:
+    src: templates/httplocal.repo.j2
+    dest: /etc/yum.repos.d/httplocal.repo
+  notify:
+    - clean cache
+
+#- block:
+#  - name: check if http server exists
+#    shell: ps -ef|grep SimpleHTTPServer|grep -v grep
+#    ignore_errors: true
+#    changed_when: false
+#    register: httpserver
+#
+#  - name: setup a http server
+#    shell: python -m SimpleHTTPServer
+#    args:
+#      chdir: "{{ playbook_dir }}/files"
+#    when: httpserver.rc != 0
+# 
+#  delegate_to: "{{ groups['masters'][0] }}"

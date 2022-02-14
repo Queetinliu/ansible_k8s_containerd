@@ -1,0 +1,13 @@
+- name: remove kernel tools
+  yum:
+    name: kernel-tools-3.10.0
+    state: absent
+
+- name: install new kernel
+  yum:
+    name: kernel-lt-4.4.138
+    state: present
+
+- name: set to new kernel
+  shell: grub2-set-default 0
+

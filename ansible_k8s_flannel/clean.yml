@@ -1,0 +1,15 @@
+- name: delete cert output file
+  file: 
+    path: "{{ playbook_dir }}/roles/cert/output/"
+    state: absent
+   
+
+- name: Get httpserver processes
+  shell: "ps -ef | grep -v grep | grep -w SimpleHTTPServer | awk '{print $2}'"
+  ignore_errors: true
+  register: running_processes
+
+- name: Kill running processes
+  shell: "kill -9 {{ item }}"
+  with_items: "{{ running_processes.stdout_lines }}"
+  when: running_processes.stdout_lines != ''

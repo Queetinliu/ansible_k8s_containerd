@@ -1,0 +1,32 @@
+- name: mkdir work dir
+  file:
+    path: /opt/weed
+    state: directory
+
+- name: mkdir weedmaster dir
+  file:
+    path: "{{ weedmasterdir }}"
+    state: directory
+  delegate_to: "{{ item }}"
+  with_items: 
+    - { path: {{ weedmasterdir }},groups: {{ groups['weedmasters'] }} }
+    - { path: {{ weedvolumedir }},groups: {{ groups['weedvolumes'] }} }
+
+
+- name: copy weed binary
+  copy:
+    src: files/weed
+    dest: /usr/local/bin/weed
+    mode: '0755'
+
+- name: generate  service
+  template:
+    src: templates/{{ item }}.service.j2
+    dest: /etc/systemd/system/{{ item }}.service 
+  with_items:
+    - weedmaster
+    - weedvolume
+    - weedfiler
+
+- include_tasks: ensurerunning.yml
+

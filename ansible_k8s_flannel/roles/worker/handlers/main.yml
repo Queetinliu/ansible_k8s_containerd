@@ -1,0 +1,6 @@
+- name: restart containerd
+  systemd:
+    name: containerd
+    daemon-reload: yes
+    enabled: yes
+    state: restarted

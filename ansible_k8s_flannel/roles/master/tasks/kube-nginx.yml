@@ -1,0 +1,88 @@
+- name: install make gcc 
+  yum:
+    name: ['gcc','make']
+    state: present
+  async: 300
+  poll: 0
+  register: gccinstall
+
+- name: make nginx directory
+  file:
+    path: "{{ k8s_dir }}/kube-nginx/{{ item }}"
+    state: directory 
+  with_items:
+    - nginx-prefix
+    - conf
+    - logs
+    - sbin 
+
+- name: copy nginx tar.gz file
+  get_url:
+  #copy:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/nginx-1.15.3.tar.gz"
+    dest: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3.tar.gz"
+
+- name: uncompress nginx tar
+  #command: tar -xzf nginx-1.15.3.tar.gz
+  unarchive:
+    src: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3.tar.gz"
+    dest: "{{ k8s_dir }}/kube-nginx"
+    creates: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3/configure"
+
+- name: generate config file
+  template:
+    src: kube-nginx.conf.j2
+    dest: "{{ k8s_dir }}/kube-nginx/conf/kube-nginx.conf"
+
+- name: generate kube-nginx service file
+  template:
+    src: kube-nginx.service.j2
+    dest: /etc/systemd/system/kube-nginx.service
+
+- name: get task status of gccinstall
+  async_status:
+    jid: "{{ gccinstall.ansible_job_id }}"
+  register: result
+  until: result.finished
+  delay: 5
+  retries: 30
+
+#- name: compile nginx
+#  shell: "{{ item }}"
+#  async: 600
+#  poll: 0
+#  loop:
+#    - ./configure --with-stream --without-http --prefix="{{ k8s_dir }}/kube-nginx/nginx-prefix" --without-http_uwsgi_module --without-http_scgi_module --without-http_fastcgi_module
+#    - make
+#    - make install
+#  args: 
+#    chdir: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3"     
+#    creates: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+
+#以上写法有问题，每个命令单独同时执行，实际需要按顺序执行，因此需要修改,用到了&&因此用shell模块
+- name: compile nginx
+  shell: ./configure --with-stream --without-http --prefix="{{ k8s_dir }}/kube-nginx/nginx-prefix" --without-http_uwsgi_module --without-http_scgi_module --without-http_fastcgi_module && make && make install
+  async: 600
+  poll: 0
+  args: 
+    chdir: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3"     
+    creates: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+
+- name: wait until compile complete
+  wait_for:
+    path: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+    state: present
+    delay: 5
+    timeout: 120
+
+- name: copy nginx bin
+  copy: 
+    src: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+    dest: "{{ k8s_dir }}/kube-nginx/sbin/kube-nginx"
+    mode: '0755'
+    remote_src: true
+
+
+- include_tasks: ensurerunning.yml
+  vars: 
+    servicename: "{{ kube_nginx.servicename }}"

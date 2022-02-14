@@ -1,0 +1,44 @@
+[Unit]
+Description=Kubernetes Controller Manager
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+
+[Service]
+WorkingDirectory={{ k8s_dir }}
+ExecStart={{ k8s_dir }}/bin/kube-controller-manager \
+  --profiling \
+  --bind-address=127.0.0.1 \
+  --kubeconfig={{ k8s_dir }}/cfg/kube-controller-manager.kubeconfig \
+  --authorization-kubeconfig={{ k8s_dir }}/cfg/kube-controller-manager.kubeconfig \
+  --authentication-kubeconfig={{ k8s_dir }}/cfg/kube-controller-manager.kubeconfig \
+  --client-ca-file={{ k8s_dir }}/cert/ca.pem \
+  --service-cluster-ip-range={{ service_cidr }} \
+  --cluster-name=kubernetes \
+  --cluster-signing-cert-file={{ k8s_dir }}/cert/ca.pem \
+  --cluster-signing-key-file={{ k8s_dir }}/cert/ca-key.pem \
+  --experimental-cluster-signing-duration=87600h \
+  --root-ca-file={{ k8s_dir }}/cert/ca.pem \
+  --requestheader-client-ca-file={{ k8s_dir }}/cert/ca.pem \
+  --requestheader-allowed-names="aggregator" \
+  --requestheader-extra-headers-prefix="X-Remote-Extra-" \
+  --requestheader-group-headers=X-Remote-Group \
+  --requestheader-username-headers=X-Remote-User \
+  --service-account-private-key-file={{ k8s_dir }}/cert/ca-key.pem \
+  --horizontal-pod-autoscaler-sync-period=10s \
+  --concurrent-deployment-syncs=10 \
+  --concurrent-gc-syncs=30 \
+  --node-cidr-mask-size=24 \
+  --pod-eviction-timeout=6m \
+  --terminated-pod-gc-threshold=10000 \
+  --leader-elect=true \
+  --feature-gates=RotateKubeletServerCertificate=true \
+  --controllers=*,bootstrapsigner,tokencleaner \
+  --tls-cert-file={{ k8s_dir }}/cert/kube-controller-manager.pem \
+  --tls-private-key-file={{ k8s_dir }}/cert/kube-controller-manager-key.pem \
+  --allocate-node-cidrs=true \
+  --cluster-cidr={{ cluster_cidr }} \
+  --use-service-account-credentials=true --alsologtostderr=true   --logtostderr=true  --v=2
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

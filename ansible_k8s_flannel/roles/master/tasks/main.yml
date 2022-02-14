@@ -1,0 +1,179 @@
+- name: install make gcc
+  yum:
+    name: ['gcc','make']
+    state: present
+  async: 300
+  poll: 0
+  register: gccinstall
+  when: groups['masters'] | length >= 3 
+
+- include_tasks: setuphttpserver.yml
+
+- name: make nginx directory
+  file:
+    path: "{{ k8s_dir }}/kube-nginx/{{ item }}"
+    state: directory
+  with_items:
+    - nginx-prefix
+    - conf
+    - logs
+    - sbin
+  when: groups['masters'] | length >= 3 
+
+- name: copy nginx tar.gz file
+  get_url:
+  #copy:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/nginx-1.15.3.tar.gz"
+    dest: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3.tar.gz"
+  when: groups['masters'] | length >= 3 
+
+#unarchive模块比较慢，不使用
+- name: uncompress nginx tar
+  command: tar -xzf nginx-1.15.3.tar.gz
+  args: 
+  #unarchive:
+    #src: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3.tar.gz"
+    chdir: "{{ k8s_dir }}/kube-nginx"
+    creates: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3/configure"
+  when: groups['masters'] | length >= 3 
+
+- name: generate config file
+  template:
+    src: kube-nginx.conf.j2
+    dest: "{{ k8s_dir }}/kube-nginx/conf/kube-nginx.conf"
+  when: groups['masters'] | length >= 3 
+
+- name: generate kube-nginx service file
+  template:
+    src: kube-nginx.service.j2
+    dest: /etc/systemd/system/kube-nginx.service
+  when: groups['masters'] | length >= 3 
+
+- name: get task status of gccinstall
+  async_status:
+    jid: "{{ gccinstall.ansible_job_id }}"
+  register: result
+  until: result.finished
+  delay: 5
+  retries: 30
+  when: groups['masters'] | length >= 3 
+
+- name: compile nginx
+  shell: ./configure --with-stream --without-http --prefix="{{ k8s_dir }}/kube-nginx/nginx-prefix" --without-http_uwsgi_module --without-http_scgi_module --without-http_fastcgi_module && make && make install
+  async: 600
+  poll: 0
+  args:
+    chdir: "{{ k8s_dir }}/kube-nginx/nginx-1.15.3"
+    creates: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+  when: groups['masters'] | length >= 3 
+
+- name: make directory
+  file:
+    path: "{{ k8s_dir }}/{{ item }}"
+    state: directory
+  with_items:
+    - bin
+    - cfg
+    - data
+    - cert
+    - logs
+
+- name: copy ca cert
+  copy:
+    src: roles/cert/output/{{ item }}
+    dest: "{{ k8s_dir }}/cert/{{ item }}"
+  with_items:
+    - ca.pem
+    - ca-key.pem
+
+- name: copy related cert
+  synchronize: 
+    src: "{{ item }}" 
+    dest: "{{ k8s_dir }}/cert/"
+  with_fileglob:
+    - "roles/cert/output/{{ kubectl.rolename }}*.pem" 
+    - "roles/cert/output/{{ kube_apiserver.rolename }}*.pem" 
+    - "roles/cert/output/{{ kube_controller_manager.rolename }}*.pem" 
+    - "roles/cert/output/{{ kube_scheduler.rolename }}*.pem" 
+    - "roles/cert/output/{{ metrics_server.rolename }}*.pem" 
+
+- name: copy kubectl
+  get_url:
+  #copy:
+   # src: files/kubectl
+    url: "{{ httpurl }}/{{ ansible_role_name }}/kubectl"
+    dest: /usr/bin/kubectl
+    mode: '0755'
+
+- name: mkdir for k8s kubeconfig
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: generate kubectl kubeconfig
+  script: files/kubeconfig.sh {{ k8s_dir }} {{ nodeip|default(ansible_host) }} {{ item.rolename }} {{ item.cn }}
+  args:
+    chdir: "{{ k8s_dir }}/cfg/"
+    creates: "{{ k8s_dir }}/cfg/has-{{ item.rolename }}"
+  with_items:
+    - "{{ kubectl }}"
+
+- name: mv kubectl kubeconfig to config
+  command: cp {{ k8s_dir }}/cfg/{{ kubectl.rolename }}.kubeconfig /root/.kube/config
+  args:
+    creates: /root/.kube/config
+
+- name: generate kube-controller-manager and kube-scheduler kubeconfig
+  script: files/kubeconfig.sh {{ k8s_dir }} {{ nodeip|default(ansible_host) }} {{ item.rolename }} {{ item.cn }}
+  args:
+    chdir: "{{ k8s_dir }}/cfg/"
+    creates: "{{ k8s_dir }}/cfg/has-{{ item.rolename }}"
+  with_items:
+    - "{{ kube_controller_manager }}"
+    - "{{ kube_scheduler }}"
+
+- name: copy audit-policy file
+  copy:
+    src: ../files/{{ item }}
+    dest: "{{ k8s_dir }}/cfg/{{ item }}"
+  with_items:
+    - audit-policy.yaml
+    - token.csv
+
+- name: generate kube-scheduler config
+  template:
+    src: templates/kube-scheduler.yaml.j2
+    dest: "{{ k8s_dir }}/cfg/kube-scheduler.yaml"
+
+- include_tasks: mastercommon.yml
+  vars:
+    rolename: "{{ item.rolename }}"
+    servicename: "{{ item.servicename }}"
+  with_items:
+    - "{{ kube_apiserver }}"
+    - "{{ kube_controller_manager }}"
+    - "{{ kube_scheduler }}"
+
+- name: wait until compile complete
+  wait_for:
+    path: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+    state: present
+    delay: 5
+    timeout: 120
+  when: groups['masters'] | length >= 3 
+
+- name: copy nginx bin
+  copy:
+    src: "{{ k8s_dir }}/kube-nginx/nginx-prefix/sbin/nginx"
+    dest: "{{ k8s_dir }}/kube-nginx/sbin/kube-nginx"
+    mode: '0755'
+    remote_src: true
+  when: groups['masters'] | length >= 3 
+
+#- include_tasks: kube-nginx.yml
+#  when: groups['masters'] | length >= 3 
+
+- include_tasks: ensurerunning.yml
+  vars:
+    servicename: "{{ kube_nginx.servicename }}"
+  when: groups['masters'] | length >= 3 

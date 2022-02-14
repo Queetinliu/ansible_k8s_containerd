@@ -1,0 +1,111 @@
+service_cidr: 10.88.0.0/16
+service_cidr_prefix: "{{ service_cidr | regex_search('([0-9]{1,3}\\.){3}') }}"
+cluster_cidr: 10.66.0.0/16
+etcd_endpoints: '{% for item in groups["etcd"] %}
+{%- if not loop.last -%}
+https://{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}:2379,
+{%- else -%}
+https://{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}:2379
+{%- endif -%}
+{% endfor %}'
+k8s_dir: /opt/k8s
+token: 5774593de3382190223132e38d48a1e2
+cluster_dns_domain: cluster.local
+pvcconfig: true
+storageclasstype: nfs
+httpurl: "http://{{ hostvars[ groups['masters'][0] ].ansible_host }}:8000"
+
+kubectl:
+  rolename: admin
+  hosts_list: ''
+  cn: admin
+  orga: system:masters
+
+
+etcd:
+  rolename: etcd
+  hosts_list:  '{% for item in groups["etcd"] %}
+"{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}",
+{% endfor %} "127.0.0.1"'
+  cn: etcd
+  orga: k8s
+  etcd_nodes: '{% for item in groups["etcd"] %}
+{%- if not loop.last -%}
+{{ hostvars[item].etcd_member_name }}=https://{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}:2380,
+{%- else -%}
+{{ hostvars[item].etcd_member_name }}=https://{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}:2380
+{%- endif -%}
+{% endfor %}'
+  etcd_workingdir: /opt/etcd
+  servicename: etcd
+
+kube_apiserver:
+  rolename: kube-apiserver
+  node_port_range: 30000-32767
+  servicename: kube-apiserver
+  hosts_list:  '{% for item in groups["masters"] %}
+"{{ hostvars[item].nodeip| default(hostvars[item].ansible_host) }}",
+{% endfor %} "127.0.0.1","{{ service_cidr_prefix }}1","kubernetes",
+    "kubernetes.default",
+    "kubernetes.default.svc",
+    "kubernetes.default.svc.cluster",
+    "kubernetes.default.svc.cluster.local."'
+  cn: kubernetes-master
+  orga: k8s
+
+metrics_server:
+  rolename: proxy-client
+  hosts_list:  ''
+  cn: aggregator
+  orga: k8s
+  imagefile: metric-server:0.5.0.tar
+
+kube_controller_manager:
+  rolename: kube-controller-manager
+  hosts_list:  '{% for item in groups["masters"] %}
+"{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}",
+{% endfor %} "127.0.0.1"'
+  cn: system:kube-controller-manager
+  orga: system:kube-controller-manager
+  servicename: kube-controller-manager
+
+kube_scheduler:
+  rolename: kube-scheduler
+  hosts_list:  '{% for item in groups["masters"] %}
+"{{ hostvars[item].nodeip|default(hostvars[item].ansible_host) }}",
+{% endfor %} "127.0.0.1"'
+  cn: system:kube-scheduler
+  orga: system:kube-scheduler
+  servicename: kube-scheduler
+
+containerd:
+  servicename: containerd
+
+flannel:
+  healthzPort: 8471
+  type: vxlan
+  iface: enp0s8
+  hostname: "{{ hostname }}" 
+  servicename: flanneld
+
+kubelet:
+  servicename: kubelet
+  
+kube_proxy:
+  rolename: kube-proxy
+  cn: system:kube-proxy
+  hosts_list: ''
+  orga: k8s
+  servicename: kube-proxy
+
+kube_nginx:
+  servicename: kube-nginx
+
+cudaandfiles:
+  cudarunfile: cuda_10.0.130_410.48_linux.run
+  driverrunfile: NVIDIA-Linux-x86_64-470.57.02.run
+
+nfssc:
+  nfsserver: 192.168.0.156
+  nfspath: /data
+ 

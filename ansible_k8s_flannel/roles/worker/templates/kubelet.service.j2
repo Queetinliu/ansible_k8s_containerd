@@ -1,0 +1,29 @@
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=containerd.service
+Requires=containerd.service
+
+[Service]
+WorkingDirectory={{ k8s_dir }}/kubelet
+ExecStart={{ k8s_dir }}/kubelet/bin/kubelet \
+  --bootstrap-kubeconfig={{ k8s_dir }}/kubelet/cfg/kubelet-bootstrap.kubeconfig \
+  --cert-dir={{ k8s_dir }}/cert \
+  --network-plugin=cni \
+  --cni-conf-dir=/etc/cni/net.d \
+  --cni-bin-dir=/opt/cniplugins/bin \
+  --container-runtime=remote \
+  --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \
+  --kubeconfig={{ k8s_dir }}/kubelet/cfg/kubelet.kubeconfig \
+  --config={{ k8s_dir }}/kubelet/cfg/kubelet-config.yaml \
+  --hostname-override={{ hostname }} \
+  --image-pull-progress-deadline=15m \
+  --volume-plugin-dir={{ k8s_dir }}/kubelet/kubelet-plugins/volume/exec/ \
+  --logtostderr=true \
+  --v=2
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target

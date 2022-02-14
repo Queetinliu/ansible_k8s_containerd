@@ -1,0 +1,349 @@
+- include_tasks: setuphttpserver.yml
+
+- name: yum libseccomp and libseccomp-dev and container-selinux
+  yum:
+    name: ['libseccomp-2.4.1','libseccomp-devel-2.4.1','container-selinux']
+    state: present
+  async: 300
+  poll: 0
+  register: libseccompinstall
+
+- name: create file for mode load
+  file:
+    path: /etc/modules-load.d/containerd.conf
+    state: touch
+
+- name: add line to containerd.conf
+  lineinfile:
+    path: /etc/modules-load.d/containerd.conf
+    line: "{{ item }}"
+    state: present
+  with_items:
+    - overlay
+    - br_netfilter
+
+- name: load essential mode
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - overlay
+    - br_netfilter   
+
+- name: copy containerd,runc,containerd-shim,ctr,crictl  bin file
+  get_url:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+  with_items:
+    - containerd
+    - runc
+    #- containerd-shim-runc-v1
+    - containerd-shim-runc-v2
+    - ctr
+    - crictl
+
+- name: mkdir for containerd config 
+  file:
+    path: /etc/containerd
+    state: directory
+
+- name: copy containerd config file
+  copy:
+    src: files/config.toml
+    dest: /etc/containerd/config.toml
+
+- name: generate containerd service 
+  copy:
+    src: files/containerd.service
+    dest: /etc/systemd/system/containerd.service
+  notify:
+    - restart containerd
+
+- meta: flush_handlers
+
+#- name: mkdir for buildah config
+#  file:
+#    path: "{{ item }}"
+#    state: directory
+#  with_items:
+#    - /etc/containers/
+#    - /usr/share/containers/
+
+#- name: copy buildah config file
+#  copy:
+#    src: "{{ item.file }}" 
+#    dest: "{{ item.paths }}/{{ item.file }}"
+#  with_items:
+#    - { file: 'registries.conf', paths: '/etc/containers/' }
+#    - { file: 'mounts.conf', paths: '/usr/share/containers/' }
+#    - { file: 'seccomp.json', paths: '/usr/share/containers/' }
+#    - { file: 'policy.json', paths: '/etc/containers/' }
+
+
+- name: make related directory
+  file:
+    path: "{{ k8s_dir }}/{{ item[0] }}/{{ item[1] }}"
+    state: directory
+  with_nested:
+    - ['kubelet','kube-proxy','flanneld']
+    - ['bin','cert','cfg']
+
+- name: copy related bin file
+  get_url:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/{{ item }}"
+    dest: "{{ k8s_dir }}/{{ item }}/bin/{{ item }}"
+    mode: '0755'
+  async: 300
+  poll: 0
+  with_items:
+    - kubelet
+    - kube-proxy
+    - flanneld
+
+- name: make cert directory for worker node
+  file:
+    path: "{{ k8s_dir }}/cert"
+    state: directory
+
+- name: copy ca cert
+  copy:
+    src: roles/cert/output/{{ item }}
+    dest: "{{ k8s_dir }}/cert/{{ item }}"
+  with_items:
+    - ca.pem
+
+- name: copy cert file
+  copy:
+    src: roles/cert/output/{{ item }}
+    dest: "{{ k8s_dir }}/kube-proxy/cert/{{ item }}"
+  with_items:
+    - "{{ kube_proxy.rolename }}.pem"
+    - "{{ kube_proxy.rolename }}-key.pem"
+
+- name: make flannel dir
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /etc/cni/net.d
+    - /run/flannel
+    - /etc/kube-flannel/
+    - /opt/cniplugins
+
+- name: copy cniplugins
+  get_url:
+    url: "{{ httpurl }}/{{ ansible_role_name }}/cri-containerd-cni-1.5.9-linux-amd64.tar.gz"
+    dest: /opt/cniplugins/cri-containerd-cni-1.5.9-linux-amd64.tar.gz
+
+- name: untar cniplugins bin
+  #unarchive:
+  command: tar -xzf cri-containerd-cni-1.5.9-linux-amd64.tar.gz -C /opt/cniplugins
+  args:
+    chdir: /opt/cniplugins
+    #dest: /opt/cniplugins/bin
+    creates: /opt/cniplugins/bin/loopback
+
+- name: check if kube-nginx running
+  shell: systemctl status kube-nginx
+  ignore_errors: true
+  changed_when: false
+  register: kube_nginx_stats
+
+- name: define kube-apiserver to first masters
+  set_fact:
+    apiserver: "https://{{ hostvars[groups['masters'][0]].ansible_host }}:6443"
+
+- name: define kube-apiserver with kube-nginx on it
+  set_fact:
+    apiserver: https://127.0.0.1:8443
+  when: kube_nginx_stats.rc == 0 
+
+- name: define kube-apiserver without kube-nginx but HA
+  set_fact:
+    apiserver: "https://{{ hostvars[groups['masters'][0]].ansible_host }}:8443"
+  when: kube_nginx_stats.rc !=0 and  groups['masters'] | length >=3
+
+- name: generate kubelet kubeconfig on controller node
+  script: files/kubeletconfig.sh {{ k8s_dir }} {{ apiserver }} {{ token }}
+  args:
+    chdir: "{{ k8s_dir }}/kubelet/cfg"
+    creates: "{{ k8s_dir }}/kubelet/cfg/kubelet-bootstrap.kubeconfig"
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: generate kube-proxy kubeconfig on controller node
+  script: files/kubeconfig.sh {{ k8s_dir }} {{ apiserver }} {{ token }} 
+  args:
+    chdir: "{{ k8s_dir }}/kube-proxy/cfg"
+    creates: "{{ k8s_dir }}/kube-proxy/cfg/kube-proxy.kubeconfig"
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: generate flanneld kubeconfig
+  script: files/flannelkubeconfig.sh {{ apiserver }} {{ k8s_dir }}
+  args:
+    chdir: "{{ k8s_dir }}/flanneld/cfg"
+    creates: "{{ k8s_dir }}/flanneld/cfg/flanneld.kubeconfig"
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: copy related kubeconfig 
+  copy:
+    src: "{{ k8s_dir }}/{{ item.path }}/cfg/{{ item.file }}"
+    dest: "{{ k8s_dir }}/{{ item.path }}/cfg/{{ item.file }}"
+  with_items:
+    - { path: kubelet, file: kubelet-bootstrap.kubeconfig}
+    - { path: kube-proxy, file: kube-proxy.kubeconfig}
+    - { path: flanneld, file: flanneld.kubeconfig}
+   
+- name: generate extra config for kubelet and kube-proxy
+  template:
+    src: templates/{{ item.file }}
+    dest: "{{ k8s_dir }}/{{item.path }}/cfg/{{ item.file | regex_replace('\\.j2$','') }}"
+  with_items:
+    - { file: kubelet-config.yaml.j2, path: kubelet }
+    - { file: kube-proxy-config.yaml.j2, path: kube-proxy }
+
+- name: install ipvs with internet
+  yum:
+    state: present
+    name: ['epel-release','ipvsadm','conntrack-tools']
+  when: internetrc|default(1) == 0
+
+- name: install ipvs without internet
+  yum:
+    state: present
+    name: ['ipvsadm','conntrack-tools']
+  when: internetrc|default(1) != 0
+
+- name: modprobe ipvs
+  modprobe:
+    name: ip_vs_rr
+    state: present  
+
+- block:
+  - name: copy nvidia-docker repo
+    copy:
+      src: files/nvidia-docker.repo
+      dest: /etc/yum.repos.d/nvidia-docker.repo
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+
+  - name: install nvidia-docker2
+    yum:
+      name: nvidia-docker2
+      state: present
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+    notify:
+    - restart docker
+
+    - meta: flush_handlers
+
+  - name: copy daemon-nvidia-docker.json
+    copy:
+      src: files/daemon-nvidia-docker.json
+      dest: /etc/docker/daemon.json
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+
+  when: "'gpuservers' in group_names"
+
+- block:
+  - name: copy pause tar to host
+    get_url:
+      url: "{{ httpurl }}/{{ ansible_role_name }}/pause-amd64:3.1.tar"
+      dest: "{{ k8s_dir }}/kubelet/bin/pause-amd64:3.1.tar"
+  
+  - name: load image
+    shell: ctr -n=k8s.io images import pause-amd64:3.1.tar
+    args:
+      chdir: "{{ k8s_dir }}/kubelet/bin/"
+
+  when: internetrc|default(1) != 0
+
+- name: generate flanneld service and other config
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}/{{ item.src.split('.')[:-1]|join('.') }}"
+    mode: '644'
+  with_items:
+    - { src: 'flanneld.service.j2', dest: '/etc/systemd/system' }
+    - { src: '10-flannel.conflist.j2', dest: '/etc/cni/net.d' }
+    - { src: 'net-conf.json.j2', dest: '/etc/kube-flannel' }
+
+- name: generate service file
+  template:
+    src: "templates/{{ item }}"
+    dest:  "/etc/systemd/system/{{ item | regex_replace('\\.j2$','') }}"
+  with_items:
+    - kubelet.service.j2
+    - kube-proxy.service.j2 
+
+- name: copy kubelet gran file
+  copy:
+    src: files/{{ item }}
+    dest: "{{ k8s_dir }}/kubelet/cfg/{{ item }}"
+  loop:
+    - bootstrap.yaml
+    - grantapiserver.yaml
+    - csr-crb.yml
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: apply grant file
+  command: kubectl apply -f {{ item }}
+  args:
+    chdir: "{{ k8s_dir }}/kubelet/cfg/"
+  loop:
+    - bootstrap.yaml
+    - grantapiserver.yaml
+    - csr-crb.yml
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: wait until copy related bin file complete
+  wait_for:
+    path: "{{ k8s_dir }}/{{ item }}/bin/{{ item }}"
+    state: present
+    timeout: 120
+  with_items:
+    - kubelet
+    - kube-proxy
+    - flanneld
+
+- name: get task status of libseccompinstall install
+  async_status:
+    jid: "{{ libseccompinstall.ansible_job_id }}"
+  register: result
+  until: result.finished
+  delay: 5
+  retries: 60
+
+
+- include_tasks: ensurerunning.yml
+  vars: 
+    servicename: "{{ item }}"
+  with_items:
+    - "{{ containerd.servicename }}"
+    - "{{ kubelet.servicename }}"
+    - "{{ kube_proxy.servicename }}"
+    - "{{ flannel.servicename }}"
+
+- name: wait until all node register
+  shell: kubectl get csr | grep Pending | wc -l
+  register: csr
+  retries: 20
+  delay: 2
+  until: csr.stdout >= groups['workers']|length
+  delegate_to: "{{ groups['masters'][0] }}"
+
+- name: approve server cert csr
+  shell: kubectl get csr | grep Pending | awk '{print $1}' | xargs kubectl certificate approve 
+  ignore_errors: true
+  args:
+    chdir: "{{ k8s_dir }}/kubelet/cfg/"
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+

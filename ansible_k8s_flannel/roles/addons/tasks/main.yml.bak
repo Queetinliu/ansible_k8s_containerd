@@ -1,0 +1,12 @@
+
+
+
+
+
+
+
+- include_role:
+    name: coredns
+- include_role:
+    name: metrics-server
+

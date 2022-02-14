@@ -1,0 +1,28 @@
+version = 2
+root = "/var/lib/containerd"
+state = "/run/containerd"
+
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    sandbox_image = "docker.io/mirrorgooglecontainers/pause-amd64:3.1"
+    [plugins."io.containerd.grpc.v1.cri".cni]
+      bin_dir = "/opt/cniplugins/bin"
+      conf_dir = "/etc/cni/net.d"
+      conf_template = "/etc/cni/net.d/10-flannel.conflist"
+  [plugins."io.containerd.runtime.v1.linux"]
+    shim = ""
+    runtime = "runc"
+    no_shim = true
+    shim_debug = false
+
+   [plugins."io.containerd.grpc.v1.cri".containerd]
+      default_runtime_name = "runc"
+      snapshotter = "overlayfs"
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+          base_runtime_spec = ""
+          container_annotations = []
+          pod_annotations = []
+          privileged_without_host_devices = false
+          runtime_root = ""
+          runtime_type = "io.containerd.runc.v1"
+

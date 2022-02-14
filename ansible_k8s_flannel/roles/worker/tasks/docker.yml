@@ -1,0 +1,84 @@
+- name: add docker-ce repo
+  copy:
+    src: files/docker-ce.repo  
+    dest: /etc/yum.repos.d/docker-ce.repo
+  when: internetrc|default(1) == 0
+
+- name: install docker-ce
+  yum:
+    name: ['docker-ce-{{ docker.version }}','docker-ce-cli-{{ docker.version }}','containerd.io']
+    state: present
+  async: 300
+  poll: 0
+  register: dockerinstall
+  notify:
+    - restart docker
+
+- name: get the task status of docker install  async_status
+  async_status:
+    jid: "{{ dockerinstall.ansible_job_id }}"
+  register: result
+  until: result.finished
+  retries: 150
+  delay: 2
+
+- meta: flush_handlers
+
+- block:
+  - name: copy nvidia-docker repo
+    copy: 
+      src: files/nvidia-docker.repo
+      dest: /etc/yum.repos.d/nvidia-docker.repo
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+
+  - name: install nvidia-docker2
+    yum:
+      name: nvidia-docker2
+      state: present
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+    notify:
+    - restart docker
+    
+    - meta: flush_handlers    
+
+  - name: copy daemon-nvidia-docker.json
+    copy: 
+      src: files/daemon-nvidia-docker.json
+      dest: /etc/docker/daemon.json
+    delegate_to: "{{ item }}"
+    with_items: "{{ groups['gpuservers'] }}"
+
+  when: "'gpuservers' in group_names"
+
+#- name: install nvidia-docker2
+#  yum:
+#    name: nvidia-docker2
+#    state: present
+#  delegate_to: "{{ item }}"
+#  with_items: "{{ groups['gpuservers'] }}"
+#  notify:
+#    - restart docker
+#  when: "'gpuservers' in group_names"
+#
+#- name: copy daemon-nvidia-docker.json
+#  copy: 
+#    src: ../files/daemon-nvidia-docker.json
+#    dest: /etc/docker/daemon.json
+#  delegate_to: "{{ item }}"
+#  with_items: "{{ groups['gpuservers'] }}"
+#  when: "'gpuservers' in group_names"
+
+- name: copy daemon-docker.json
+  copy: 
+    src: files/daemon-docker.json
+    dest: /etc/docker/daemon.json
+  notify:
+  - restart docker
+    
+- meta: flush_handlers    
+
+- include_tasks: ensurerunning.yml
+  vars:
+    servicename: "{{ docker.servicename }}"

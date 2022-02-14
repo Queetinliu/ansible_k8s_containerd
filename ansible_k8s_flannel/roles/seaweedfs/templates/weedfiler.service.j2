@@ -1,0 +1,15 @@
+[Unit]
+Description=SeaweedFS volume
+After=network.target weedmaster.target weedvolume.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/weed filer  -ip={{ filerip }}  -master={{ weedmasterslist }} -port={{ filerport }} -peers={{ weedfilerslist }}
+WorkingDirectory=/opt/weed
+SyslogIdentifier=seaweedfs-filer
+
+[Install]
+WantedBy=multi-user.target
