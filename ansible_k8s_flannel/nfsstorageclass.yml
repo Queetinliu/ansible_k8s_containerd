@@ -24,7 +24,7 @@
   delegate_to: "{{ item }}"
   with_items: "{{ groups['workers'] }}"  
 
-- name: load nfs oci image
+- name: load nfs tar image
   shell: ctr -n=k8s.io images import /opt/nfs-subdir-external-provisioner.tar
   delegate_to: "{{ item }}"
   with_items: "{{ groups['workers'] }}"  
@@ -37,7 +37,7 @@
     dest: /opt/nfs-subdir-external-provisioner-4.0.12.tgz
    
 - name: check if nfs-client sc exists
-  shell: kubectl get pods|grep nfssc-nfs-subdir-external-provisioner 
+  shell: helm list
   ignore_errors: true
   register: storageclass
 
@@ -54,4 +54,4 @@
 
 - name: deploy nfs storageclass
   shell: helm install nfssc /opt/nfs-subdir-external-provisioner-4.0.12.tgz --set nfs.server={{ nfssc.nfsserver }} --set nfs.path={{ nfssc.nfspath }}
-  when: " '1/1' not in storageclass.stdout "
+  when: " 'nfssc' not in storageclass.stdout "

@@ -6,7 +6,7 @@ clientConnection:
   qps: 100
 enableContentionProfiling: false
 enableProfiling: true
-healthzBindAddress: ""
+healthzBindAddress: 127.0.0.1:10251
 leaderElection:
   leaderElect: true
-metricsBindAddress: ""
+metricsBindAddress: {{ nodeip|default(ansible_host) }}:10251
