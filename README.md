@@ -1,3 +1,4 @@
+在1.22.6上部署成功，只是需要修改kube-scheduler.yaml.j2如下:
 apiVersion: kubescheduler.config.k8s.io/v1beta2
 kind: KubeSchedulerConfiguration
 clientConnection:
